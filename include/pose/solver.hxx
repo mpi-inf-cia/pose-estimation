@@ -56,7 +56,7 @@ private:
     size_type separateAndAddViolatedSingleClusterConstraints();
     size_type separateAndAddViolatedCouplingConstraints();
     size_type separateAndAddViolated3CycleConstraints();
-    size_type separateAndAddViolatedLinearizationConstraints();
+    size_type addAllViolatedLinearizationConstraints();
     size_type separateAndAddViolatedMustSelectClassConstraints();
 
     // variable indexing
@@ -93,34 +93,33 @@ Solver<ILP_SOLVER>::Solver(
     solverIndex_(solverIndex)
 {
     ilpSolver_.setVerbosity(true);
-    ilpSolver_.setRelativeGap(0.01);//
+    ilpSolver_.setRelativeGap(.0);//
     //ilpSolver_.setNumberOfThreads(2);
     ilpSolver_.setNumberOfThreads(1);
     //ilpSolver_.setTimeLimit(timeLimit);
 
     setObjectiveFunction();
     addAllImpossiblePartClassConstraints();
+    addAllViolatedLinearizationConstraints();
 
     for(;;) { // cutting plane loop
         ilpSolver_.optimize();
 
         const size_type nUniqueness = separateAndAddViolatedUniquenessConstraints();
-
         const size_type nCoupling = separateAndAddViolatedCouplingConstraints();
         const size_type nCycle = separateAndAddViolated3CycleConstraints();
-        const size_type nLinearization = separateAndAddViolatedLinearizationConstraints();
         //const size_type nMustSelectClass = separateAndAddViolatedMustSelectClassConstraints();
 
         // single cluster contraints
         if(solverIndex.compare("s") == 0){
             const size_type nSingleCluster = separateAndAddViolatedSingleClusterConstraints();
-            if(nUniqueness + nCoupling + nCycle + nLinearization + nSingleCluster == 0) {
+            if(nUniqueness + nCoupling + nCycle + nSingleCluster == 0) {
                 break;
             }
         }
 
         // multiple clusters cases
-        if(nUniqueness + nCoupling + nCycle + nLinearization == 0) {
+        if(nUniqueness + nCoupling + nCycle == 0) {
             break;
         }
     }
@@ -423,95 +422,94 @@ Solver<ILP_SOLVER>::separateAndAddViolated3CycleConstraints() {
 
 template<class ILP_SOLVER>
 typename Solver<ILP_SOLVER>::size_type
-Solver<ILP_SOLVER>::separateAndAddViolatedLinearizationConstraints() {
-    std::cout << "separating and adding violated linearization constraints: " << std::flush;
+Solver<ILP_SOLVER>::addAllViolatedLinearizationConstraints() {
+    std::cout << "adding all linearization constraints: " << std::flush;
 
-    std::size_t n = 0;
-    size_type vi[] = {0, 0, 0, 0};
-    const double lowerBound = -std::numeric_limits<double>::infinity();
-    const double upperBound = 2.0;
-    for(size_type d0 = 0; d0 < problem_.numberOfDetections(); ++d0)
-    for(size_type d1 = d0 + 1; d1 < problem_.numberOfDetections(); ++d1) {
-        vi[0] = y(d0, d1);
-        if(ilpSolver_.label(vi[0]) == 1) { // if y_{d0, d1} = 1
-            const double c[] = {1.0, 1.0, 1.0, -1.0};
-            for(size_type c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0) {
-                vi[1] = x(d0, c0);
-                if(ilpSolver_.label(vi[1]) == 1) { // if x_{d0, c0} = 1
-                    for(size_type c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1) {
-                        vi[2] = x(d1, c1);
-                        if(ilpSolver_.label(vi[2]) == 1) { // if x_{d1, c1} = 1
-                            const JoinIndexType joinIndex(d0, d1, c0, c1);
-                            auto it = problem_.joinMap().find(joinIndex);
-                            if(it == problem_.joinMap().end()
-                            || it->second.getProbability() <= epsilonProbability_) { // if z_{d0, d1, c0, c1} is not explicitly in the ILP
-                                // z_{d0, d1, c0, c1} = 0. Thus:
-                                ilpSolver_.addConstraint(vi, vi + 3, c, lowerBound, upperBound);
-                                ++n;
-                            }
-                            else { // if z_{d0, d1, c0, c1} is explicitly in the ILP
-                                vi[3] = it->second.getVariableIndex(); // z_{d0, d1, c0, c1}
-                                if(ilpSolver_.label(vi[3]) == 0) { // if z_{d0, d1, c0, c1} = 0
-                                    ilpSolver_.addConstraint(vi, vi + 4, c, lowerBound, upperBound);
-                                    ++n;
-                                }
+    size_t n = 0;
 
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        else { // if y_{d0, d1} = 0
-            const double c[] = {-1.0, 1.0};
-            for(size_type c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0)
-            for(size_type c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1) {
-                const JoinIndexType joinIndex(d0, d1, c0, c1);
-                auto it = problem_.joinMap().find(joinIndex);
-                if (it != problem_.joinMap().end()) {// if z_{d0, d1, c0, c1} is explicitly in the ILP
-                    vi[1] = it->second.getVariableIndex(); // z_{d0, d1, c0, c1}
-                    if(ilpSolver_.label(vi[1]) == 1) { // if z_{d0, d1, c0, c1} = 1
-                        ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, 0.0);
-                        ++n;
-                    }
-                }
-             }
-         }
-    }
+    size_t vi[] = { 0, 0, 0, 0 };
 
-    const double c[] = {-1.0, 1.0};
-    for(size_type d0 = 0; d0 < problem_.numberOfDetections(); ++d0)
-    for(size_type c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0) {
-        vi[0] = x(d0, c0);
-        if(ilpSolver_.label(vi[0]) == 0) { // if x_{d0, c0} = 0
-            for(size_type d1 = d0 + 1; d1 < problem_.numberOfDetections(); ++d1)
-            for(size_type c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1) {
+    double const lowerBound = -std::numeric_limits<double>::infinity();
+    double const upperBound = 2.0;
+    for (size_t d0 = 0; d0 < problem_.numberOfDetections(); ++d0)
+        for (size_t d1 = d0 + 1; d1 < problem_.numberOfDetections(); ++d1)
+        {
+            vi[0] = y(d0, d1);
+
+            { // if y_{d0, d1} = 1
+                double const c[] = { 1.0, 1.0, 1.0, -1.0 };
+
+                for (size_t c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0)
                 {
-                    const JoinIndexType joinIndex(d0, d1, c0, c1);
-                    auto it = problem_.joinMap().find(joinIndex);
-                    if (it != problem_.joinMap().end()) { // if z_{d0, d1, c0, c1} is explicitly in the ILP
-                        vi[1] = it->second.getVariableIndex(); // z_{d0, d1, c0, c1}
-                        if(ilpSolver_.label(vi[1]) == 1) { // if z_{d0, d1, c0, c1} = 1
-                            ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, 0.0);
+                    vi[1] = x(d0, c0);
+
+                    for (size_t c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1)
+                    {
+                        vi[2] = x(d1, c1);
+
+                        auto it = problem_.joinMap().find(JoinIndexType(d0, d1, c0, c1));
+
+                        if (it->second.getProbability() <= epsilonProbability_) // if z_{d0, d1, c0, c1} is not explicitly in the ILP
+                        {
+                            // z_{d0, d1, c0, c1} = 0. Thus:
+                            ilpSolver_.addConstraint(vi, vi + 3, c, lowerBound, upperBound);
                             ++n;
                         }
-                    }
-                }{
-                    const JoinIndexType joinIndex(d1, d0, c1, c0); // note: different order
-                    auto it = problem_.joinMap().find(joinIndex);
-                    if (it != problem_.joinMap().end()) { // if z_{d1, d0, c1, c0} is explicitly in the ILP
-                        vi[1] = it->second.getVariableIndex(); // z_{d1, d0, c1, c0}
-                        if(ilpSolver_.label(vi[1]) == 1) { // if z_{d1, d0, c1, c0} = 1
-                            ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, 0.0);
+                        else // if z_{d0, d1, c0, c1} is explicitly in the ILP
+                        {
+                            vi[3] = it->second.getVariableIndex(); // z_{d0, d1, c0, c1}
+
+                            ilpSolver_.addConstraint(vi, vi + 4, c, lowerBound, upperBound);
                             ++n;
                         }
                     }
                 }
             }
+            { // if y_{d0, d1} = 0
+                const double c[] = {-1.0, 1.0};
+
+                for (size_t c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0)
+                    for (size_t c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1)
+                    {
+                        auto it = problem_.joinMap().find(JoinIndexType(d0, d1, c0, c1));
+                        
+                        if (it->second.getProbability() > epsilonProbability_) // if z_{d0, d1, c0, c1} is explicitly in the ILP
+                        {
+                            vi[1] = it->second.getVariableIndex(); // z_{d0, d1, c0, c1}
+
+                            ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, .0);
+                            ++n;
+                        }
+                    }
+            }
         }
-    }
+
+    double const c[] = { 1.0, -1.0 };
+    for (size_t d0 = 0; d0 < problem_.numberOfDetections(); ++d0)
+        for (size_t d1 = d0 + 1; d1 < problem_.numberOfDetections(); ++d1)
+            for (size_t c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0)
+                for (size_t c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1)
+                {
+                    auto it = problem_.joinMap().find(JoinIndexType(d0, d1, c0, c1));
+
+                    if (it->second.getProbability() <= epsilonProbability_)
+                        continue;
+
+                    vi[0] = it->second.getVariableIndex();
+
+                    vi[1] = x(d0, c0);
+
+                    ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, .0);
+                    ++n;
+
+                    vi[1] = x(d1, c1);
+
+                    ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, .0);
+                    ++n;                    
+                }
 
     std::cout << n << std::endl;
+
     return n;
 }
 
