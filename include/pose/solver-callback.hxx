@@ -68,7 +68,7 @@ private:
     class Callback
     :   public IlpSolver::Callback
     {
-    public:        
+    public:
         typedef typename IlpSolver::Callback IlpSolverCallback;
         typedef PoseEstimator<IlpSolver, FeasibleSolutionCallback> PoseEstimatorType;
         typedef typename PoseEstimatorType::size_type size_type;
@@ -135,7 +135,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::PoseEstimator(
     const int timeLimit,
     const double epsilonProbability
 )
-:   
+:
     problem_(problem),
     epsilonProbability_(epsilonProbability),
     detectionGraph_(problem.numberOfDetections()),
@@ -243,7 +243,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllImpossiblePartClass
             if (problem_.getPartClassProbability(d, l) <= epsilonProbability_)
             {
                 vi[0] = x(d, l);
-                
+
                 ilpSolver_.addConstraint(vi, vi + 1, c, .0, .0); // x_{d, c} = 0
                 ++n;
             }
@@ -306,7 +306,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllLinearizationConstr
                     for (size_t c1 = 0; c1 < problem_.numberOfPartClasses(); ++c1)
                     {
                         auto it = problem_.joinMap().find(JoinIndexType(d0, d1, c0, c1));
-                        
+
                         if (it->second.getProbability() > epsilonProbability_) // if z_{d0, d1, c0, c1} is explicitly in the ILP
                         {
                             vi[1] = it->second.getVariableIndex(); // z_{d0, d1, c0, c1}
@@ -339,7 +339,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllLinearizationConstr
                     vi[1] = x(d1, c1);
 
                     ilpSolver_.addConstraint(vi, vi + 2, c, lowerBound, .0);
-                    ++n;                    
+                    ++n;
                 }
 
     std::cout << n << std::endl;
@@ -364,7 +364,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllCouplingConstraints
     double const upperBound = std::numeric_limits<double>::infinity();
 
     for (size_t d0 = 0; d0 < problem_.numberOfDetections(); ++d0)
-        for (size_t d1 = d0 + 1; d1 < problem_.numberOfDetections(); ++d1) 
+        for (size_t d1 = d0 + 1; d1 < problem_.numberOfDetections(); ++d1)
         {
             vi.back() = y(d0, d1);
 
@@ -374,7 +374,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllCouplingConstraints
 
             ilpSolver_.addConstraint(vi.begin(), vi.end(), c.begin(), lowerBound, upperBound); // 0 <= (sum_{c \in C} x_{d0, c}) - y_{d0, d1}
             ++n;
-            
+
             // d1
             for(size_t c = 0; c < problem_.numberOfPartClasses(); ++c)
                 vi[c] = x(d1, c); // d1
@@ -405,7 +405,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllUniquenessConstrain
             for (size_t c0 = 0; c0 < problem_.numberOfPartClasses(); ++c0)
             {
                 vi[0] = x(d, c0);
-                
+
                 for(size_t c1 = c0 + 1; c1 < problem_.numberOfPartClasses(); ++c1)
                 {
                     vi[1] = x(d, c1);
@@ -417,8 +417,8 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::addAllUniquenessConstrain
     }
     else
     {
-        vector<size_t> vi(problem_.numberOfPartClasses());
-        vector<size_t> const c(problem_.numberOfPartClasses(), 1.0);
+        std::vector<size_t> vi(problem_.numberOfPartClasses());
+        std::vector<size_t> const c(problem_.numberOfPartClasses(), 1.0);
 
         for (size_t d = 0; d < problem_.numberOfDetections(); ++d)
         {
@@ -594,7 +594,7 @@ PoseEstimator<ILP_SOLVER, FEASBILE_SOLUTION_CALLBACK>::Callback::separateAndAddL
         {
             solution[d].clusterIndex_ = components.labels_[d];
             solution[d].partClass_ = std::numeric_limits<size_t>::max(); // suppressed
-            
+
             for (size_t c = 0; c < poseEstimator_.problem_.numberOfPartClasses(); ++c)
                 if (this->label(poseEstimator_.x(d, c)) > .5)
                 {
